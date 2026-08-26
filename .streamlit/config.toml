@@ -1,0 +1,16 @@
+# Theme cho demo_app.py — khớp với palette trong demo/theme.py
+# (dark surface #1a1a19 trên page plane #0d0d0d, accent blue slot 1)
+
+[theme]
+base = "dark"
+primaryColor = "#3987e5"
+backgroundColor = "#0d0d0d"
+secondaryBackgroundColor = "#1a1a19"
+textColor = "#ffffff"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+runOnSave = true

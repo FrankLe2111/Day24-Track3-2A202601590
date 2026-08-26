@@ -11,6 +11,9 @@ langchain-community>=0.2,<0.3
 langchain-openai>=0.1,<0.2
 datasets>=2.19
 openai>=1.30
+pymupdf                        # Render scanned PDF pages for local OCR
+pillow                         # Images for Transformers
+transformers @ git+https://github.com/huggingface/transformers.git  # GLM-OCR architecture
 
 # ── Day 24 new: LLM Judge ────────────────────────────────────────────────────
 scipy>=1.11                      # Cohen's κ calculation

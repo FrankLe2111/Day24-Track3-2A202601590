@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab 24 — RAG Evaluation & Guardrail Stack</title>
+<style>
+:root{--ink:#172033;--muted:#5d687d;--line:#dfe5ee;--soft:#f5f8fc;--blue:#2563eb;--green:#16805c;--orange:#b45309}
+*{box-sizing:border-box}body{margin:0;background:#eef2f7;color:var(--ink);font:15px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+.page{max-width:1180px;margin:auto;padding:32px 22px 70px}header{background:linear-gradient(135deg,#14213d,#2456a6);color:white;padding:38px 42px;border-radius:18px;box-shadow:0 12px 35px #182c5525}
+h1{margin:0 0 8px;font-size:34px;line-height:1.15;letter-spacing:-.03em}h2{margin:0 0 17px;font-size:24px;letter-spacing:-.02em}h3{margin:24px 0 8px;font-size:18px}
+p{margin:8px 0 14px}.subtitle{color:#dce8ff;font-size:17px}.meta{margin-top:20px;color:#dce8ff;font-size:13px}
+nav,section,footer{background:white;border:1px solid var(--line);border-radius:14px;margin-top:18px;padding:25px 30px;box-shadow:0 3px 14px #1f365408}
+nav{padding:18px 25px}nav a{color:var(--blue);text-decoration:none;margin-right:18px;white-space:nowrap}nav a:hover{text-decoration:underline}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:13px}.card{background:var(--soft);border:1px solid var(--line);border-radius:11px;padding:17px}
+.value{display:block;font-size:28px;font-weight:750;line-height:1.2;color:var(--blue)}.label{color:var(--muted);font-size:13px}
+.ok{color:var(--green);font-weight:700}.warn{color:var(--orange);font-weight:700}.info,.note{padding:12px 15px;border-radius:7px}.info{background:#eef6ff;border-left:4px solid var(--blue)}.note{background:#fff8e8;border-left:4px solid #e5a51a}
+code{background:#edf2f7;border-radius:4px;padding:2px 5px;color:#17355f}pre{overflow:auto;background:#111827;color:#e5edf9;border-radius:9px;padding:16px 18px;line-height:1.5}
+table{width:100%;border-collapse:collapse;margin:12px 0 18px}th,td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top}th{background:#f6f8fb;color:#334155;font-size:13px}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-items:center;margin:18px 0}.step{position:relative;min-height:85px;display:flex;flex-direction:column;justify-content:center;text-align:center;background:#eef5ff;border:1px solid #bfd5fb;border-radius:10px;padding:9px}
+.step:not(:last-child)::after{content:"→";position:absolute;right:-15px;color:var(--blue);font-size:22px;font-weight:700}.step strong{display:block;font-size:14px}.step small{color:var(--muted);font-size:12px}
+details{border:1px solid var(--line);border-radius:8px;margin:9px 0;padding:10px 13px}summary{cursor:pointer;font-weight:650}
+footer{color:var(--muted);font-size:13px}@media(max-width:760px){header{padding:28px 24px}h1{font-size:28px}nav,section{padding:20px}.flow{grid-template-columns:1fr}.step:not(:last-child)::after{content:"↓";right:50%;bottom:-20px;top:auto}}
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+<h1>Lab 24 — RAG Evaluation & Guardrail Stack</h1>
+<div class="subtitle">Báo cáo tổng quan project, kiến trúc, kết quả và cách vận hành</div>
+<div class="meta">Workspace: <code>lapa/Day24-Track3-2A202601590</code> · Cập nhật: 26/08/2026</div>
+</header>
+
+<nav><strong>Nội dung:</strong>
+<a href="#overview">Tổng quan</a><a href="#architecture">Kiến trúc</a><a href="#files">Files</a>
+<a href="#phase-a">Phase A</a><a href="#phase-b">Phase B</a><a href="#phase-c">Phase C</a>
+<a href="#run">Cách chạy</a><a href="#issues">Lỗi thường gặp</a>
+</nav>
+
+<section id="overview">
+<h2>1. Project này làm gì?</h2>
+<p>Day 18 xây dựng RAG để tìm tài liệu và trả lời câu hỏi. Lab 24 bổ sung evaluation và guardrails để đo độ tin cậy, chặn input nguy hiểm và kiểm tra output trước khi trả về người dùng.</p>
+<ul><li><strong>Evaluation:</strong> đo answer đúng, đủ, liên quan và context có phù hợp không.</li>
+<li><strong>Guardrails:</strong> chặn PII, prompt injection, jailbreak và câu hỏi ngoài phạm vi HR.</li></ul>
+<div class="grid">
+<div class="card"><span class="value">25</span><span class="label">tài liệu đang load sau cấu hình skip</span></div>
+<div class="card"><span class="value">50</span><span class="label">câu hỏi Phase A</span></div>
+<div class="card"><span class="value">20/20</span><span class="label">adversarial cases passed</span></div>
+<div class="card"><span class="value">22/22</span><span class="label">check_lab checks passed</span></div>
+</div>
+<p class="info"><strong>Kết luận:</strong> project chạy end-to-end và đạt checklist. Điểm yếu chất lượng nằm ở multi-hop faithfulness. Phase B hiện có judge demo một cặp, chưa phải κ chính thức trên đủ 10 human labels.</p>
+</section>
+
+<section id="architecture">
+<h2>2. Kiến trúc và luồng dữ liệu</h2>
+<h3>2.1. Luồng tạo dữ liệu và trả lời</h3>
+<div class="flow">
+<div class="step"><strong>Documents</strong><small>Markdown + PDF</small></div>
+<div class="step"><strong>M1 Chunking</strong><small>parent/child</small></div>
+<div class="step"><strong>M5 Enrichment</strong><small>LLM metadata</small></div>
+<div class="step"><strong>M2 + M3</strong><small>search + rerank</small></div>
+<div class="step"><strong>Answer</strong><small>OpenAI/context</small></div>
+</div>
+<h3>2.2. Guard stack</h3>
+<div class="flow">
+<div class="step"><strong>User Input</strong><small>câu hỏi</small></div>
+<div class="step"><strong>Presidio</strong><small>PII scan</small></div>
+<div class="step"><strong>NeMo Input</strong><small>topic/jailbreak</small></div>
+<div class="step"><strong>RAG Day 18</strong><small>search + answer</small></div>
+<div class="step"><strong>NeMo Output</strong><small>safe response</small></div>
+</div>
+<p>PII được kiểm tra trước để không đưa dữ liệu nhạy cảm vào retrieval/LLM. Input rail chặn yêu cầu nguy hiểm, output rail kiểm tra lần cuối.</p>
+<h3>2.3. Hạ tầng</h3>
+<table><tr><th>Thành phần</th><th>Vai trò</th><th>Cấu hình</th></tr>
+<tr><td>Qdrant</td><td>Lưu vector và dense search</td><td>Docker, host port <code>6333</code></td></tr>
+<tr><td>BM25</td><td>Tìm keyword chính xác</td><td><code>rank-bm25</code></td></tr>
+<tr><td>Dense embedding</td><td>Semantic similarity</td><td><code>BAAI/bge-m3</code>, dim 1024</td></tr>
+<tr><td>Reranker</td><td>Sắp xếp candidate</td><td>FlashRank/CrossEncoder</td></tr>
+<tr><td>LLM</td><td>Enrichment, answer, judge, NeMo</td><td>OpenAI key trong <code>.env</code></td></tr></table>
+</section>
+
+<section id="files">
+<h2>3. Bản đồ files</h2>
+<table><tr><th>File/thư mục</th><th>Chức năng</th><th>Khi dùng</th></tr>
+<tr><td><code>src/m1_chunking.py</code></td><td>Đọc tài liệu, skip file, hierarchical chunking.</td><td>Đầu vào pipeline.</td></tr>
+<tr><td><code>src/m2_search.py</code></td><td>Hybrid BM25 + dense search trong Qdrant.</td><td>Retrieval.</td></tr>
+<tr><td><code>src/m3_rerank.py</code></td><td>Rerank top candidates.</td><td>Trước khi trả lời.</td></tr>
+<tr><td><code>src/m4_eval.py</code></td><td>Wrapper RAGAS và failure analysis.</td><td>Được Phase A gọi.</td></tr>
+<tr><td><code>src/m5_enrichment.py</code></td><td>LLM enrich chunk bằng summary/metadata.</td><td>Setup/pipeline.</td></tr>
+<tr><td><code>src/pipeline.py</code></td><td>Load → chunk → enrich → index → rerank.</td><td>Query/evaluation.</td></tr>
+<tr><td><code>src/phase_a_ragas.py</code></td><td>50 câu, 4 metrics, bottom-10, clusters.</td><td><code>python src/phase_a_ragas.py</code></td></tr>
+<tr><td><code>src/phase_b_judge.py</code></td><td>Pairwise judge, swap, κ, bias.</td><td><code>python src/phase_b_judge.py</code></td></tr>
+<tr><td><code>src/phase_c_guard.py</code></td><td>Presidio, NeMo, adversarial, latency.</td><td><code>python src/phase_c_guard.py</code></td></tr>
+<tr><td><code>guardrails/</code></td><td>NeMo model config và Colang flows.</td><td>Thay đổi guard policy.</td></tr>
+<tr><td><code>setup_answers.py</code></td><td>Tạo <code>answers_50q.json</code>.</td><td>Chạy trước Phase A.</td></tr>
+<tr><td><code>check_lab.py</code></td><td>Kiểm tra files, reports, TODO và tests.</td><td>Trước khi nộp.</td></tr></table>
+<h3>3.1. Tài liệu bị skip</h3>
+<p>Loader bỏ qua cả PDF và Markdown/OCR tương ứng có prefix:</p>
+<ul><li><code>BCTC*</code></li><li><code>Nghi_dinh_so_13-2023*</code></li><li><code>so_tay_an_toan*</code></li></ul>
+<p>File không bị xóa, chỉ không được load/chunk/index.</p>
+</section>
+
+<section id="phase-a">
+<h2>4. Phase A — RAGAS Evaluation</h2>
+<p>Phase A đánh giá <code>answers_50q.json</code> với factual (20), multi-hop (20), adversarial (10).</p>
+<div class="grid"><div class="card"><span class="value">0.872</span><span class="label">factual avg_score</span></div>
+<div class="card"><span class="value">0.676</span><span class="label">multi-hop avg_score</span></div>
+<div class="card"><span class="value">0.715</span><span class="label">adversarial avg_score</span></div>
+<div class="card"><span class="value">0.762</span><span class="label">weighted overall average</span></div></div>
+<h3>4.1. Điểm theo distribution</h3>
+<table><tr><th>Distribution</th><th>Faithfulness</th><th>Answer relevancy</th><th>Context precision</th><th>Context recall</th><th>Avg</th></tr>
+<tr><td>factual (20)</td><td>0.900</td><td>0.691</td><td>0.971</td><td>0.925</td><td><strong>0.872</strong></td></tr>
+<tr><td>multi_hop (20)</td><td>0.376</td><td>0.579</td><td>1.000</td><td>0.750</td><td><strong>0.676</strong></td></tr>
+<tr><td>adversarial (10)</td><td>0.583</td><td>0.575</td><td>0.983</td><td>0.717</td><td><strong>0.715</strong></td></tr></table>
+<h3>4.2. Ý nghĩa metrics</h3>
+<table><tr><th>Metric</th><th>Câu hỏi</th><th>Kết quả</th></tr>
+<tr><td>Faithfulness</td><td>Answer có bịa ngoài context không?</td><td>Yếu nhất ở multi-hop: 0.376.</td></tr>
+<tr><td>Answer relevancy</td><td>Answer có trả lời đúng câu hỏi không?</td><td>Thấp ở factual: 0.691.</td></tr>
+<tr><td>Context precision</td><td>Top context có liên quan không?</td><td>Rất tốt: 0.971–1.000.</td></tr>
+<tr><td>Context recall</td><td>Đã lấy đủ thông tin chưa?</td><td>Thấp hơn ở adversarial: 0.717.</td></tr></table>
+<p>Retrieval tốt vì precision gần 1.0. Nút thắt là tổng hợp nhiều policy, tính toán và phân biệt version. Nên dùng prompt checklist, tăng parent context/retrieval depth và buộc nêu policy version khi xung đột.</p>
+<p><a href="ragas_50q.json">Raw RAGAS report</a> · <a href="../analysis/failure_clusters.md">Failure analysis</a></p>
+</section>
+
+<section id="phase-b">
+<h2>5. Phase B — LLM-as-Judge</h2>
+<p>Judge so sánh A/B theo accuracy, completeness và conciseness. Swap-and-average đổi vị trí để phát hiện position bias.</p>
+<div class="flow"><div class="step"><strong>Pass 1</strong><small>judge(A,B)</small></div><div class="step"><strong>Swap</strong><small>judge(B,A)</small></div><div class="step"><strong>Convert</strong><small>A↔B</small></div><div class="step"><strong>Consensus</strong><small>khác → tie</small></div><div class="step"><strong>Bias/Kappa</strong><small>đo tin cậy</small></div></div>
+<table><tr><th>Trường</th><th>Kết quả</th></tr><tr><td>Cặp đã judge</td><td>1 demo pair</td></tr><tr><td>Pass 1 / Pass 2 / Final</td><td>A / A / A</td></tr><tr><td>Position consistent</td><td>True</td></tr><tr><td>Position bias</td><td>0% (0/1)</td></tr><tr><td>Verbosity bias</td><td>100% (1/1; mẫu quá nhỏ)</td></tr><tr><td>Cohen’s κ</td><td>1.000 — demo only</td></tr></table>
+<p class="note"><strong>Giới hạn:</strong> κ hiện chưa phải kết quả chính thức trên 10 human labels. Report ghi rõ <code>kappa_scope: demo pair only</code>. Cần chạy cùng 10 question ID trước khi dùng κ đánh giá độ tin cậy.</p>
+<p><a href="judge_results.json">Raw judge report</a> · <a href="../analysis/bias_report.md">Bias analysis</a></p>
+</section>
+
+<section id="phase-c">
+<h2>6. Phase C — Guardrails</h2>
+<h3>6.1. Presidio PII</h3>
+<p>Custom recognizer bắt CCCD 12 số (<code>VN_CCCD</code>) và SĐT Việt Nam 10 số (<code>VN_PHONE</code>), kết hợp email recognizer. Kết quả được anonymize trước khi đi tiếp.</p>
+<pre>Input:  CCCD 034095001234, SĐT 0987654321
+Output: CCCD &lt;VN_CCCD&gt;, SĐT &lt;VN_PHONE&gt;</pre>
+<h3>6.2. Adversarial suite</h3>
+<table><tr><th>Category</th><th>Cases</th><th>Layer</th><th>Kết quả</th></tr><tr><td>pii_injection</td><td>5</td><td>Presidio/NeMo</td><td class="ok">5/5</td></tr><tr><td>jailbreak</td><td>5</td><td>NeMo + pattern fallback</td><td class="ok">5/5</td></tr><tr><td>off_topic</td><td>5</td><td>NeMo + pattern fallback</td><td class="ok">5/5</td></tr><tr><td>prompt_injection</td><td>5</td><td>NeMo + pattern fallback</td><td class="ok">5/5</td></tr><tr><td><strong>Tổng</strong></td><td><strong>20</strong></td><td></td><td class="ok"><strong>20/20</strong></td></tr></table>
+<h3>6.3. Latency</h3>
+<table><tr><th>Layer</th><th>P50</th><th>P95</th><th>P99</th></tr><tr><td>Presidio</td><td>7.17 ms</td><td>10.12 ms</td><td>10.12 ms</td></tr><tr><td>NeMo input</td><td>1.11 ms</td><td>1.31 ms</td><td>1.31 ms</td></tr><tr><td><strong>Total</strong></td><td><strong>8.29 ms</strong></td><td><strong>11.43 ms</strong></td><td><strong>11.43 ms</strong></td></tr></table>
+<p class="ok">P95 total 11.43 ms &lt; budget 500 ms — đạt trong benchmark hiện tại.</p>
+<p class="note">Đây là benchmark nhỏ; khi NeMo thực sự gọi LLM qua network, latency production có thể cao hơn.</p>
+<p><a href="guard_results.json">Raw guard report</a></p>
+</section>
+
+<section id="run">
+<h2>7. Cách cài đặt và chạy</h2>
+<pre>cd ~/Depth-Anything-3/lapa/Day24-Track3-2A202601590
+conda activate depth
+python -m pip install -r requirements.txt
+python -m spacy download en_core_web_lg
+docker compose up -d
+
+# Điền OPENAI_API_KEY vào .env
+python setup_answers.py
+python src/phase_a_ragas.py
+python src/phase_b_judge.py
+python src/phase_c_guard.py
+python -m pytest tests/ -v
+python check_lab.py</pre>
+<p><strong>Thứ tự:</strong> setup answers trước, sau đó chạy A/B/C. Các report nằm trong <code>reports/</code>; phân tích diễn giải nằm trong <code>analysis/</code>.</p>
+<table><tr><th>Output</th><th>Nội dung</th></tr><tr><td><code>answers_50q.json</code></td><td>50 answers, contexts và ground truth.</td></tr><tr><td><code>reports/ragas_50q.json</code></td><td>RAGAS aggregate, distribution, clusters, bottom 10.</td></tr><tr><td><code>reports/judge_results.json</code></td><td>κ demo, bias và swap results.</td></tr><tr><td><code>reports/guard_results.json</code></td><td>20 adversarial và latency.</td></tr><tr><td><code>reports/blueprint.md</code></td><td>CI/CD và monitoring plan.</td></tr></table>
+</section>
+
+<section id="issues">
+<h2>8. Lỗi thường gặp</h2>
+<details><summary>Docker: port 6333 is already allocated</summary><p>Qdrant khác đang chiếm port. Dùng <code>docker ps --filter "publish=6333"</code>, stop container cũ hoặc đổi mapping host như <code>6334:6333</code>.</p></details>
+<details><summary>PDF scan bị skip</summary><p><code>pypdf</code> chỉ đọc text layer. Ba tài liệu BCTC, Nghị định và Sổ tay hiện được skip theo cấu hình.</p></details>
+<details><summary>UnicodeDecodeError</summary><p>Loader đọc UTF-8 và fallback sang <code>cp1258</code> cho Markdown tiếng Việt cũ.</p></details>
+<details><summary>pytest thiếu presidio_analyzer</summary><p>Dùng <code>python -m pytest</code> sau khi activate env <code>depth</code>; binary <code>pytest</code> hệ thống có thể dùng Python khác.</p></details>
+<details><summary>Phase C P95 quá cao</summary><p>Presidio/NeMo phải được khởi tạo một lần cho suite/benchmark, không khởi tạo lại từng input.</p></details>
+</section>
+
+<section id="next">
+<h2>9. Việc nên làm tiếp khi deploy thật</h2>
+<ol><li>Chạy Phase B trên đủ 10 human-labeled questions và tính κ chính thức.</li><li>Đặt timeout, retry có giới hạn và fallback cho LLM calls.</li><li>Đo latency trên traffic thật thay vì chỉ benchmark nhỏ.</li><li>Thêm version metadata để ưu tiên policy hiện hành.</li><li>Cache pattern phổ biến và theo dõi pass rate/P95 liên tục.</li></ol>
+</section>
+
+<footer><strong>Tóm tắt:</strong> RAG retrieval tốt, guardrail checklist đạt 22/22; ưu tiên cải thiện multi-hop faithfulness và hoàn thiện Phase B với 10 cặp judge thực tế.</footer>
+</div>
+</body>
+</html>

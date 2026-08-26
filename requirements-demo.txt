@@ -1,0 +1,6 @@
+# Dependencies riêng cho Streamlit demo (demo_app.py).
+# Cài thêm bên cạnh requirements.txt của lab:
+#     pip install -r requirements-demo.txt
+
+streamlit>=1.32          # st.toggle, st.tabs, st.cache_data
+plotly>=5.19             # marker_cornerradius cho bar chart

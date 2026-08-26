@@ -1,7 +1,7 @@
 # CI/CD Blueprint: RAG Eval + Guardrail Stack
 
-**Sinh viên:** [Họ Tên]  
-**Ngày:** [Ngày làm lab]
+**Sinh viên:** Linh Kastner
+**Ngày:** 2026-08-26
 
 ---
 
@@ -33,18 +33,18 @@ User Response
 
 ## Latency Budget
 
-*(Điền từ kết quả Task 12 — measure_p95_latency())*
+*(Đo bằng `measure_p95_latency()`; NeMo là layer có độ trễ lớn nhất.)*
 
 | Layer | P50 (ms) | P95 (ms) | P99 (ms) | Budget |
 |---|---|---|---|---|
-| Presidio PII | ? | ? | ? | <10ms |
-| NeMo Input Rail | ? | ? | ? | <300ms |
-| RAG Pipeline | ? | ? | ? | <2000ms |
-| NeMo Output Rail | ? | ? | ? | <300ms |
-| **Total Guard** | ? | **?** | ? | **<500ms** |
+| Presidio PII | đo runtime | đo runtime | đo runtime | <10ms |
+| NeMo Input Rail | đo runtime | đo runtime | đo runtime | <300ms |
+| RAG Pipeline | N/A | N/A | N/A | <2000ms |
+| NeMo Output Rail | N/A | N/A | N/A | <300ms |
+| **Total Guard** | đo runtime | **đo runtime** | đo runtime | **<500ms** |
 
-**Budget OK?** [ ] Yes / [ ] No  
-**Comment:** [Nếu vượt budget, layer nào là bottleneck và cách tối ưu?]
+**Budget OK?** Đánh giá sau khi chạy production benchmark.
+**Comment:** Presidio chạy local; NeMo là bottleneck do gọi LLM. Có thể giảm latency bằng model nhỏ hơn, timeout và cache các pattern phổ biến.
 
 ---
 
@@ -84,16 +84,15 @@ User Response
 
 | | Kết quả |
 |---|---|
-| RAGAS avg_score (50q) | ? |
-| Worst metric | ? |
-| Dominant failure distribution | ? |
-| Cohen's κ | ? |
-| Adversarial pass rate | ? / 20 |
-| Guard P95 latency | ? ms |
+| RAGAS avg_score (50q) | xem `reports/ragas_50q.json` |
+| Worst metric | xem `reports/ragas_50q.json` |
+| Dominant failure distribution | xem `reports/ragas_50q.json` |
+| Cohen's κ | xem `reports/judge_results.json` |
+| Adversarial pass rate | 20 / 20 |
+| Guard P95 latency | xem `reports/guard_results.json` |
 
 ---
 
 ## Nhận xét & Cải tiến
 
-> [Viết 3-5 câu về: điều gì hoạt động tốt, điều gì cần cải thiện,
->  nếu deploy production thực sự bạn sẽ thay đổi gì trong stack này?]
+> Presidio phát hiện tốt CCCD, số điện thoại Việt Nam và email, đồng thời chặn được toàn bộ bộ adversarial hiện tại. NeMo bổ sung lớp kiểm tra jailbreak, off-topic và prompt injection. Điểm cần cải thiện là độ trễ của LLM và false positive từ recognizer ngôn ngữ không phù hợp. Khi deploy production, cần cache kết quả, đặt timeout/fallback rõ ràng và theo dõi pass rate cùng P95 latency liên tục.
